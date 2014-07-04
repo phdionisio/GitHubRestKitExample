@@ -7,10 +7,12 @@
 //
 
 #import <UIKit/UIKit.h>
+#import "Repository.h"
 
 @interface NavigatorDetailViewController : UIViewController
 
-@property (strong, nonatomic) id detailItem;
+@property (nonatomic, strong) Repository *repo;
 
-@property (weak, nonatomic) IBOutlet UILabel *detailDescriptionLabel;
+-(void)setRepo:(Repository *)repo;
+
 @end

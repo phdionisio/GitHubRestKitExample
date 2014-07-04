@@ -6,13 +6,18 @@
 //  Copyright (c) 2014 Patrick Dionisio. All rights reserved.
 //
 
+#import <RestKit/RestKit.h>
+
 #import "NavigatorMasterViewController.h"
-
 #import "NavigatorDetailViewController.h"
+#import "Repository.h"
 
-@interface NavigatorMasterViewController () {
-    NSMutableArray *_objects;
-}
+#define kCLIENTID @"32208d10d949b22a7400"
+#define kCLIENTSECRET @"a02a8bae9dbcad5de81064341f79cac95c004184"
+#define kOAUTHTOKEN @"309d9833e6148d9ce2835b41ae5a3154f3e36f50"
+
+@interface NavigatorMasterViewController ()
+@property (nonatomic, strong) NSArray *repos;
 @end
 
 @implementation NavigatorMasterViewController
@@ -22,30 +27,81 @@
     [super awakeFromNib];
 }
 
+- (void)configureRestKit
+{
+    // Log all HTTP traffic with request and response bodies
+    RKLogConfigureByName("RestKit/Network", RKLogLevelTrace);
+    
+    // initialize AFNetworking HTTPClient
+    NSURL *baseURL = [NSURL URLWithString:@"https://api.github.com"];
+    AFHTTPClient *client = [[AFHTTPClient alloc] initWithBaseURL:baseURL];
+    
+    // initialize RestKit
+    RKObjectManager *objectManager = [[RKObjectManager alloc] initWithHTTPClient:client];
+    
+    // setup object mappings
+    // repository
+    RKObjectMapping *repoResponseMapping = [RKObjectMapping mappingForClass:[Repository class]];
+    [repoResponseMapping addAttributeMappingsFromDictionary:@{
+                                                      @"id": @"repoId",
+                                                      @"name": @"name",
+                                                      }];
+    
+    // register mappings with the provider using a request descriptor
+    RKRequestDescriptor *requestDescriptor =
+    [RKRequestDescriptor requestDescriptorWithMapping:[repoResponseMapping inverseMapping] objectClass:[Repository class] rootKeyPath:nil method:RKRequestMethodPOST];
+    [objectManager addRequestDescriptor:requestDescriptor];
+    
+    // register mappings with the provider using a response descriptor
+    RKResponseDescriptor *responseDescriptor =
+    [RKResponseDescriptor responseDescriptorWithMapping:repoResponseMapping
+                                                 method:RKRequestMethodGET
+                                            pathPattern:@"/users/phdionisio/repos"
+                                                keyPath:nil
+                                            statusCodes:[NSIndexSet indexSetWithIndex:200]];
+    [objectManager addResponseDescriptor:responseDescriptor];
+    
+    
+}
+
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-	// Do any additional setup after loading the view, typically from a nib.
-    self.navigationItem.leftBarButtonItem = self.editButtonItem;
-
-    UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(insertNewObject:)];
-    self.navigationItem.rightBarButtonItem = addButton;
+    [self configureRestKit];
+    [self loadRepos];
 }
 
+-(void)viewWillAppear:(BOOL)animated
+{
+    [self loadRepos];
+}
+
+- (void)loadRepos
+{
+    //NSString *clientID = kCLIENTID;
+    //NSString *clientSecret = kCLIENTSECRET;
+    NSString *token = kOAUTHTOKEN;
+    
+    NSDictionary *queryParams = @{@"access_token" : token};
+    
+    //NSDictionary *queryParams = @{@"client_id" : clientID,
+    //                              @"client_secret" : clientSecret};
+    
+    //[[RKObjectManager sharedManager].HTTPClient setDefaultHeader:@"Authorization" value:token];
+    [[RKObjectManager sharedManager] getObjectsAtPath:@"/users/phdionisio/repos"
+                                           parameters:queryParams
+                                              success:^(RKObjectRequestOperation *operation, RKMappingResult *mappingResult) {
+                                                  _repos = mappingResult.array;
+                                                  [self.tableView reloadData];
+                                              }
+                                              failure:^(RKObjectRequestOperation *operation, NSError *error) {
+                                                  NSLog(@"What do you mean by 'there is no coffee?': %@", error);
+                                              }];
+}
 - (void)didReceiveMemoryWarning
 {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
-}
-
-- (void)insertNewObject:(id)sender
-{
-    if (!_objects) {
-        _objects = [[NSMutableArray alloc] init];
-    }
-    [_objects insertObject:[NSDate date] atIndex:0];
-    NSIndexPath *indexPath = [NSIndexPath indexPathForRow:0 inSection:0];
-    [self.tableView insertRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
 }
 
 #pragma mark - Table View
@@ -57,15 +113,15 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
-    return _objects.count;
+    return _repos.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
-
-    NSDate *object = _objects[indexPath.row];
-    cell.textLabel.text = [object description];
+    
+    Repository *repo = _repos[indexPath.row];
+    cell.textLabel.text = repo.name;
     return cell;
 }
 
@@ -73,16 +129,6 @@
 {
     // Return NO if you do not want the specified item to be editable.
     return YES;
-}
-
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath
-{
-    if (editingStyle == UITableViewCellEditingStyleDelete) {
-        [_objects removeObjectAtIndex:indexPath.row];
-        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
-    } else if (editingStyle == UITableViewCellEditingStyleInsert) {
-        // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view.
-    }
 }
 
 /*
@@ -105,8 +151,8 @@
 {
     if ([[segue identifier] isEqualToString:@"showDetail"]) {
         NSIndexPath *indexPath = [self.tableView indexPathForSelectedRow];
-        NSDate *object = _objects[indexPath.row];
-        [[segue destinationViewController] setDetailItem:object];
+        Repository *repo = _repos[indexPath.row];
+        [[segue destinationViewController] setRepo:repo];
     }
 }
 
